@@ -26,8 +26,7 @@ const Navigation = () => {
     return () => window.removeEventListener('admin-auth-change', handleAuthChange);
   }, []);
 
-  const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-  const showAdminLinks = isLocal || isAdminAuthenticated || location.pathname === '/admin' || location.pathname === '/qr';
+  const showAdminLinks = isAdminAuthenticated;
 
   // No mostramos la barra en el landing page
   if (location.pathname === '/') return null;

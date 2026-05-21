@@ -1,4 +1,15 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
+import { db, isFirebaseConfigured } from '../firebase';
+import { 
+  collection, 
+  doc, 
+  onSnapshot, 
+  setDoc, 
+  updateDoc, 
+  deleteDoc, 
+  query, 
+  orderBy 
+} from 'firebase/firestore';
 
 const OrderContext = createContext();
 
@@ -23,6 +34,11 @@ export const OrderProvider = ({ children }) => {
     return saved ? JSON.parse(saved) : DEFAULT_MENU;
   });
 
+  const [closings, setClosings] = useState(() => {
+    const saved = localStorage.getItem('patagonia_closings');
+    return saved ? JSON.parse(saved) : [];
+  });
+
   const [activeOrderId, setActiveOrderId] = useState(() => {
     return localStorage.getItem('patagonia_active_order_id') || null;
   });
@@ -33,7 +49,7 @@ export const OrderProvider = ({ children }) => {
   const [cart, setCart] = useState([]);
   const [hasFetched, setHasFetched] = useState(false);
 
-  // Fetch helpers
+  // Fetch helpers para la API local (Fallback)
   const fetchOrders = async () => {
     try {
       const res = await fetch('/api/orders');
@@ -49,7 +65,6 @@ export const OrderProvider = ({ children }) => {
             if (activeLocalOrder && serverOrder.id === currentActiveId) {
               return {
                 ...serverOrder,
-                // Preservar billRequested si se activó localmente
                 billRequested: serverOrder.billRequested || activeLocalOrder.billRequested
               };
             }
@@ -65,7 +80,7 @@ export const OrderProvider = ({ children }) => {
         });
       }
     } catch (e) {
-      // Quiet fail to fall back to localStorage
+      // Fallback a localStorage silencioso
     }
   };
 
@@ -77,24 +92,73 @@ export const OrderProvider = ({ children }) => {
         setMenuItems(data);
       }
     } catch (e) {
-      // Quiet fail to fall back to localStorage
+      // Fallback a localStorage silencioso
     }
   };
 
-  // Sync with API and poll
+  // Sincronización en Tiempo Real con Firebase o Polling en Local
   useEffect(() => {
-    fetchOrders();
-    fetchMenu();
+    if (isFirebaseConfigured && db) {
+      console.log("📡 Conectando suscripciones en tiempo real con Firestore...");
+      
+      // 1. Suscripción a la Carta (Menú)
+      const unsubscribeMenu = onSnapshot(collection(db, 'menu'), (snapshot) => {
+        const items = [];
+        snapshot.forEach(docSnap => {
+          items.push({ id: docSnap.id, ...docSnap.data() });
+        });
+        setMenuItems(items);
+        
+        // Inicialización automática e idempotente si la carta en la nube está vacía
+        if (snapshot.empty) {
+          console.log("🌱 Carta de base de datos vacía. Inicializando con menú por defecto...");
+          DEFAULT_MENU.forEach(async (item) => {
+            await setDoc(doc(db, 'menu', item.id), item);
+          });
+        }
+      });
 
-    const interval = setInterval(() => {
+      // 2. Suscripción a los Pedidos
+      const qOrders = query(collection(db, 'orders'), orderBy('createdAt', 'desc'));
+      const unsubscribeOrders = onSnapshot(qOrders, (snapshot) => {
+        const items = [];
+        snapshot.forEach(docSnap => {
+          items.push({ id: docSnap.id, ...docSnap.data() });
+        });
+        setHasFetched(true);
+        setOrders(items);
+      });
+
+      // 3. Suscripción a los Cierres de Caja
+      const qClosings = query(collection(db, 'closings'), orderBy('createdAt', 'desc'));
+      const unsubscribeClosings = onSnapshot(qClosings, (snapshot) => {
+        const items = [];
+        snapshot.forEach(docSnap => {
+          items.push({ id: docSnap.id, ...docSnap.data() });
+        });
+        setClosings(items);
+      });
+
+      return () => {
+        unsubscribeMenu();
+        unsubscribeOrders();
+        unsubscribeClosings();
+      };
+    } else {
+      // Polling fallback para API local ( Vite Dev Server )
       fetchOrders();
       fetchMenu();
-    }, 3000); // Poll every 3 seconds
 
-    return () => clearInterval(interval);
+      const interval = setInterval(() => {
+        fetchOrders();
+        fetchMenu();
+      }, 3000);
+
+      return () => clearInterval(interval);
+    }
   }, []);
 
-  // Sync to localStorage
+  // Sincronización a localStorage
   useEffect(() => {
     localStorage.setItem('patagonia_orders', JSON.stringify(orders));
   }, [orders]);
@@ -104,6 +168,10 @@ export const OrderProvider = ({ children }) => {
   }, [menuItems]);
 
   useEffect(() => {
+    localStorage.setItem('patagonia_closings', JSON.stringify(closings));
+  }, [closings]);
+
+  useEffect(() => {
     if (activeOrderId) {
       localStorage.setItem('patagonia_active_order_id', activeOrderId);
     } else {
@@ -111,7 +179,7 @@ export const OrderProvider = ({ children }) => {
     }
   }, [activeOrderId]);
 
-  // Limpiar ID de pedido activo si se ha sincronizado con el servidor y ya no existe (p. ej. base de datos limpia)
+  // Limpiar ID de pedido activo si se ha sincronizado con el servidor y ya no existe
   useEffect(() => {
     if (hasFetched && activeOrderId) {
       const exists = orders.some(o => o.id === activeOrderId);
@@ -155,22 +223,29 @@ export const OrderProvider = ({ children }) => {
       createdAt: new Date().toISOString()
     };
     
-    // 1. Enviar primero la comanda a la API del servidor y esperar su respuesta
-    try {
-      const res = await fetch('/api/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newOrder)
-      });
-      if (!res.ok) {
-        throw new Error(`Error en el servidor: ${res.status}`);
+    // Guardar el pedido (Firebase o API Local)
+    if (isFirebaseConfigured && db) {
+      try {
+        await setDoc(doc(db, 'orders', newId), newOrder);
+      } catch (e) {
+        console.error('Error al guardar pedido en Firestore:', e);
       }
-    } catch (e) {
-      console.error('Error al enviar el pedido a la API:', e);
-      // Continuamos con el flujo local como fallback para que no quede bloqueado en caso de corte de red temporal
+    } else {
+      try {
+        const res = await fetch('/api/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newOrder)
+        });
+        if (!res.ok) {
+          throw new Error(`Error en el servidor local: ${res.status}`);
+        }
+      } catch (e) {
+        console.error('Error al enviar el pedido a la API local:', e);
+      }
     }
 
-    // 2. Una vez completado el fetch, actualizamos el estado local del cliente
+    // Actualizamos el estado local
     setOrders(prev => [newOrder, ...prev]);
     setActiveOrderId(newId);
     clearCart();
@@ -183,14 +258,22 @@ export const OrderProvider = ({ children }) => {
       order.id === orderId ? { ...order, status: newStatus } : order
     ));
 
-    try {
-      await fetch(`/api/orders/${orderId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus })
-      });
-    } catch (e) {
-      console.warn('Failed to update status on API', e);
+    if (isFirebaseConfigured && db) {
+      try {
+        await updateDoc(doc(db, 'orders', orderId), { status: newStatus });
+      } catch (e) {
+        console.error('Error al actualizar estado en Firestore:', e);
+      }
+    } else {
+      try {
+        await fetch(`/api/orders/${orderId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: newStatus })
+        });
+      } catch (e) {
+        console.warn('Failed to update status on API', e);
+      }
     }
   };
 
@@ -199,14 +282,22 @@ export const OrderProvider = ({ children }) => {
       order.id === orderId ? { ...order, billRequested: true } : order
     ));
 
-    try {
-      await fetch(`/api/orders/${orderId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ billRequested: true })
-      });
-    } catch (e) {
-      console.warn('Failed to request bill on API', e);
+    if (isFirebaseConfigured && db) {
+      try {
+        await updateDoc(doc(db, 'orders', orderId), { billRequested: true });
+      } catch (e) {
+        console.error('Error al solicitar cuenta en Firestore:', e);
+      }
+    } else {
+      try {
+        await fetch(`/api/orders/${orderId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ billRequested: true })
+        });
+      } catch (e) {
+        console.warn('Failed to request bill on API', e);
+      }
     }
   };
 
@@ -216,38 +307,59 @@ export const OrderProvider = ({ children }) => {
 
   // CRUD Menu Items
   const addMenuItem = async (item) => {
+    const newId = Date.now().toString();
     const newItem = {
       ...item,
-      id: Date.now().toString(),
+      id: newId,
       price: Number(item.price),
       isActive: true
     };
     setMenuItems(prev => [...prev, newItem]);
 
-    try {
-      await fetch('/api/menu', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newItem)
-      });
-    } catch (e) {
-      console.warn('Failed to add menu item on API', e);
+    if (isFirebaseConfigured && db) {
+      try {
+        await setDoc(doc(db, 'menu', newId), newItem);
+      } catch (e) {
+        console.error('Error al añadir producto en Firestore:', e);
+      }
+    } else {
+      try {
+        await fetch('/api/menu', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newItem)
+        });
+      } catch (e) {
+        console.warn('Failed to add menu item on API', e);
+      }
     }
   };
 
   const updateMenuItem = async (updatedItem) => {
+    const formattedItem = {
+      ...updatedItem,
+      price: Number(updatedItem.price)
+    };
     setMenuItems(prev => prev.map(item => 
-      item.id === updatedItem.id ? { ...updatedItem, price: Number(updatedItem.price) } : item
+      item.id === updatedItem.id ? formattedItem : item
     ));
 
-    try {
-      await fetch(`/api/menu/${updatedItem.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedItem)
-      });
-    } catch (e) {
-      console.warn('Failed to update menu item on API', e);
+    if (isFirebaseConfigured && db) {
+      try {
+        await setDoc(doc(db, 'menu', updatedItem.id), formattedItem);
+      } catch (e) {
+        console.error('Error al modificar producto en Firestore:', e);
+      }
+    } else {
+      try {
+        await fetch(`/api/menu/${updatedItem.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatedItem)
+        });
+      } catch (e) {
+        console.warn('Failed to update menu item on API', e);
+      }
     }
   };
 
@@ -261,14 +373,22 @@ export const OrderProvider = ({ children }) => {
       return item;
     }));
 
-    try {
-      await fetch(`/api/menu/${itemId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isActive: isNowActive })
-      });
-    } catch (e) {
-      console.warn('Failed to toggle menu item status on API', e);
+    if (isFirebaseConfigured && db) {
+      try {
+        await updateDoc(doc(db, 'menu', itemId), { isActive: isNowActive });
+      } catch (e) {
+        console.error('Error al alternar estado en Firestore:', e);
+      }
+    } else {
+      try {
+        await fetch(`/api/menu/${itemId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ isActive: isNowActive })
+        });
+      } catch (e) {
+        console.warn('Failed to toggle menu item status on API', e);
+      }
     }
   };
 
@@ -276,12 +396,44 @@ export const OrderProvider = ({ children }) => {
     setMenuItems(prev => prev.filter(item => item.id !== itemId));
     setCart(prev => prev.filter(item => item.id !== itemId));
 
-    try {
-      await fetch(`/api/menu/${itemId}`, {
-        method: 'DELETE'
-      });
-    } catch (e) {
-      console.warn('Failed to delete menu item on API', e);
+    if (isFirebaseConfigured && db) {
+      try {
+        await deleteDoc(doc(db, 'menu', itemId));
+      } catch (e) {
+        console.error('Error al eliminar producto en Firestore:', e);
+      }
+    } else {
+      try {
+        await fetch(`/api/menu/${itemId}`, {
+          method: 'DELETE'
+        });
+      } catch (e) {
+        console.warn('Failed to delete menu item on API', e);
+      }
+    }
+  };
+
+  const saveClosing = async (closingData) => {
+    const id = closingData.id || `closing_${Date.now()}`;
+    const newClosing = {
+      ...closingData,
+      id,
+      createdAt: new Date().toISOString()
+    };
+
+    setClosings(prev => {
+      const exists = prev.some(c => c.id === id);
+      if (exists) return prev.map(c => c.id === id ? newClosing : c);
+      return [newClosing, ...prev];
+    });
+
+    if (isFirebaseConfigured && db) {
+      try {
+        await setDoc(doc(db, 'closings', id), newClosing);
+        console.log(`🔒 Cierre de caja ${id} guardado en Firestore.`);
+      } catch (e) {
+        console.error('Error al guardar cierre de caja en Firestore:', e);
+      }
     }
   };
 
@@ -289,6 +441,7 @@ export const OrderProvider = ({ children }) => {
     <OrderContext.Provider value={{
       orders,
       menuItems,
+      closings,
       activeOrderId,
       cart,
       addToCart,
@@ -301,7 +454,8 @@ export const OrderProvider = ({ children }) => {
       addMenuItem,
       updateMenuItem,
       toggleMenuItemActive,
-      deleteMenuItem
+      deleteMenuItem,
+      saveClosing
     }}>
       {children}
     </OrderContext.Provider>

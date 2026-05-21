@@ -1,6 +1,25 @@
 import React, { useState } from 'react';
 import { useOrders } from '../../context/OrderContext';
-import { Clock, ChefHat, CheckSquare, CheckCircle, Plus, Edit2, Trash2, Eye, EyeOff, Receipt, DollarSign, Lock, LogOut } from 'lucide-react';
+import { 
+  Clock, 
+  ChefHat, 
+  CheckSquare, 
+  CheckCircle, 
+  Plus, 
+  Edit2, 
+  Trash2, 
+  Eye, 
+  EyeOff, 
+  Receipt, 
+  DollarSign, 
+  Lock, 
+  LogOut,
+  BarChart2,
+  Calendar,
+  FileText,
+  TrendingUp,
+  ShoppingBag
+} from 'lucide-react';
 
 const Dashboard = () => {
   const { 
@@ -10,7 +29,9 @@ const Dashboard = () => {
     addMenuItem, 
     updateMenuItem, 
     toggleMenuItemActive, 
-    deleteMenuItem 
+    deleteMenuItem,
+    closings = [],
+    saveClosing
   } = useOrders();
 
   // Authentication State
@@ -39,7 +60,21 @@ const Dashboard = () => {
     window.dispatchEvent(new Event('admin-auth-change'));
   };
 
-  const [activeTab, setActiveTab] = useState('orders'); // 'orders', 'menu' o 'history'
+  const [activeTab, setActiveTab] = useState('orders'); // 'orders', 'menu', 'history' o 'reports'
+  
+  // Reports State
+  const [reportsSubTab, setReportsSubTab] = useState('daily'); // 'daily', 'monthly', 'yearly', 'history'
+  
+  // Get current date/month/year in local time safely
+  const getLocalDateString = (date = new Date()) => {
+    const offset = date.getTimezoneOffset();
+    const localDate = new Date(date.getTime() - (offset * 60 * 1000));
+    return localDate.toISOString().split('T')[0];
+  };
+
+  const [selectedDailyDate, setSelectedDailyDate] = useState(() => getLocalDateString());
+  const [selectedMonth, setSelectedMonth] = useState(() => getLocalDateString().substring(0, 7)); // YYYY-MM
+  const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear());
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   
@@ -297,6 +332,123 @@ const Dashboard = () => {
   const finalizedOrders = orders.filter(o => o.status === 'finalizado');
   const totalRevenue = finalizedOrders.reduce((sum, o) => sum + o.total, 0);
 
+  // --- Daily reports computations ---
+  const dailyOrders = orders.filter(o => 
+    o.status === 'finalizado' && 
+    o.createdAt && 
+    o.createdAt.split('T')[0] === selectedDailyDate
+  );
+  
+  const dailyTotalSales = dailyOrders.reduce((sum, o) => sum + o.total, 0);
+  const dailyOrdersCount = dailyOrders.length;
+  const dailyAverageTicket = dailyOrdersCount > 0 ? Math.round(dailyTotalSales / dailyOrdersCount) : 0;
+  
+  // Products sold today
+  const dailyProductQuantities = {};
+  dailyOrders.forEach(order => {
+    order.items.forEach(item => {
+      if (dailyProductQuantities[item.name]) {
+        dailyProductQuantities[item.name] += item.quantity;
+      } else {
+        dailyProductQuantities[item.name] = item.quantity;
+      }
+    });
+  });
+  
+  const sortedDailyProducts = Object.entries(dailyProductQuantities)
+    .map(([name, qty]) => ({ name, qty }))
+    .sort((a, b) => b.qty - a.qty);
+
+  const maxDailyQty = sortedDailyProducts.length > 0 ? sortedDailyProducts[0].qty : 1;
+
+  // --- Monthly reports computations ---
+  // List of closures for the selected month
+  const monthlyClosings = closings.filter(c => c.date && c.date.startsWith(selectedMonth));
+  
+  // Realized orders for the selected month (for comparison/live stats)
+  const monthlyOrders = orders.filter(o => 
+    o.status === 'finalizado' && 
+    o.createdAt && 
+    o.createdAt.startsWith(selectedMonth)
+  );
+  
+  const monthlyTotalSales = monthlyOrders.reduce((sum, o) => sum + o.total, 0);
+  const monthlyOrdersCount = monthlyOrders.length;
+  const monthlyAverageTicket = monthlyOrdersCount > 0 ? Math.round(monthlyTotalSales / monthlyOrdersCount) : 0;
+  
+  // Products sold this month
+  const monthlyProductQuantities = {};
+  monthlyOrders.forEach(order => {
+    order.items.forEach(item => {
+      if (monthlyProductQuantities[item.name]) {
+        monthlyProductQuantities[item.name] += item.quantity;
+      } else {
+        monthlyProductQuantities[item.name] = item.quantity;
+      }
+    });
+  });
+  
+  const sortedMonthlyProducts = Object.entries(monthlyProductQuantities)
+    .map(([name, qty]) => ({ name, qty }))
+    .sort((a, b) => b.qty - a.qty);
+
+  const maxMonthlyQty = sortedMonthlyProducts.length > 0 ? sortedMonthlyProducts[0].qty : 1;
+
+  // --- Yearly reports computations ---
+  const yearlyOrders = orders.filter(o => 
+    o.status === 'finalizado' && 
+    o.createdAt && 
+    o.createdAt.startsWith(String(selectedYear))
+  );
+  
+  const yearlyTotalSales = yearlyOrders.reduce((sum, o) => sum + o.total, 0);
+  const yearlyOrdersCount = yearlyOrders.length;
+  
+  const monthNames = [
+    'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 
+    'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'
+  ];
+  
+  const yearlyMonthsData = Array.from({ length: 12 }, (_, i) => {
+    const monthStr = String(i + 1).padStart(2, '0');
+    const monthPrefix = `${selectedYear}-${monthStr}`;
+    const monthOrders = yearlyOrders.filter(o => o.createdAt.startsWith(monthPrefix));
+    const sales = monthOrders.reduce((sum, o) => sum + o.total, 0);
+    return {
+      name: monthNames[i],
+      sales,
+      count: monthOrders.length
+    };
+  });
+  
+  const maxYearlyMonthSales = Math.max(...yearlyMonthsData.map(m => m.sales), 1);
+
+  const handlePerformDailyClosing = () => {
+    const closingId = `closing_${selectedDailyDate}`;
+    const alreadyClosed = closings.some(c => c.id === closingId);
+    
+    if (alreadyClosed) {
+      if (!window.confirm(`Ya existe un cierre registrado para el día ${selectedDailyDate}. ¿Deseas sobreescribirlo con los datos actuales?`)) {
+        return;
+      }
+    } else {
+      if (!window.confirm(`¿Confirmas que deseas realizar el cierre de caja para el día ${selectedDailyDate}?`)) {
+        return;
+      }
+    }
+    
+    saveClosing({
+      id: closingId,
+      date: selectedDailyDate,
+      totalSales: dailyTotalSales,
+      ordersCount: dailyOrdersCount,
+      averageTicket: dailyAverageTicket,
+      popularItems: sortedDailyProducts
+    });
+    
+    alert(`¡Cierre de caja guardado con éxito para el día ${selectedDailyDate}!`);
+  };
+
   return (
     <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '2rem 1rem' }}>
       
@@ -437,6 +589,24 @@ const Dashboard = () => {
           }}
         >
           Historial de Caja ({finalizedOrders.length} cobros)
+        </button>
+        <button 
+          onClick={() => setActiveTab('reports')}
+          style={{
+            padding: '0.75rem 1.25rem',
+            backgroundColor: 'transparent',
+            border: 'none',
+            borderBottom: activeTab === 'reports' ? '3px solid var(--color-primary)' : '3px solid transparent',
+            color: activeTab === 'reports' ? 'var(--color-primary)' : '#6b7280',
+            fontWeight: '600',
+            fontSize: '0.95rem',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            outline: 'none',
+            whiteSpace: 'nowrap'
+          }}
+        >
+          Reportes y Cierre 📊
         </button>
       </div>
 
@@ -864,6 +1034,753 @@ const Dashboard = () => {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Contenido de la pestaña de REPORTES Y CIERRES */}
+      {activeTab === 'reports' && (
+        <div className="animate-fade-in">
+          {/* Sub-Navegación de Reportes */}
+          <div style={{
+            display: 'flex',
+            gap: '0.5rem',
+            marginBottom: '2rem',
+            backgroundColor: 'white',
+            padding: '0.5rem',
+            borderRadius: '12px',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+            border: '1px solid #e5e7eb',
+            overflowX: 'auto'
+          }}>
+            {[
+              { id: 'daily', label: 'Cierre Diario ☀️' },
+              { id: 'monthly', label: 'Cierre Mensual 🌙' },
+              { id: 'yearly', label: 'Cierre Anual 🏔️' },
+              { id: 'history', label: 'Historial de Cierres 📁' }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setReportsSubTab(tab.id)}
+                style={{
+                  flex: '1 1 auto',
+                  padding: '0.625rem 1.25rem',
+                  backgroundColor: reportsSubTab === tab.id ? 'var(--color-primary)' : 'transparent',
+                  color: reportsSubTab === tab.id ? 'white' : '#4b5563',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontWeight: '600',
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* CONTENIDO DAILY */}
+          {reportsSubTab === 'daily' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+              {/* Selector de Fecha */}
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'space-between', 
+                flexWrap: 'wrap', 
+                gap: '1rem',
+                backgroundColor: 'white',
+                borderRadius: '16px',
+                padding: '1.5rem',
+                border: '1px solid #e5e7eb',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+              }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Calendar size={20} style={{ color: 'var(--color-primary)' }} /> Seleccionar Día de Análisis
+                  </h3>
+                  <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.8rem', color: '#6b7280' }}>
+                    Consulta las ventas y realiza el cierre formal de caja para la fecha seleccionada.
+                  </p>
+                </div>
+                <input
+                  type="date"
+                  value={selectedDailyDate}
+                  onChange={(e) => setSelectedDailyDate(e.target.value)}
+                  className="input"
+                  style={{ maxWidth: '220px', cursor: 'pointer' }}
+                />
+              </div>
+
+              {/* Grid de Métricas */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                gap: '1.5rem'
+              }}>
+                {/* Total Ventas */}
+                <div style={{ 
+                  backgroundColor: 'white',
+                  borderRadius: '16px',
+                  padding: '1.5rem',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+                  border: '1px solid #e5e7eb',
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '1rem' 
+                }}>
+                  <div style={{
+                    width: '48px',
+                    height: '48px',
+                    borderRadius: '12px',
+                    backgroundColor: '#e2f0d9',
+                    color: '#385723',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    <DollarSign size={24} />
+                  </div>
+                  <div>
+                    <span style={{ fontSize: '0.8rem', color: '#6b7280', display: 'block' }}>Ventas del Día</span>
+                    <strong style={{ fontSize: '1.5rem', color: 'var(--color-primary)', fontFamily: 'monospace' }}>${dailyTotalSales}</strong>
+                  </div>
+                </div>
+
+                {/* Comandas */}
+                <div style={{ 
+                  backgroundColor: 'white',
+                  borderRadius: '16px',
+                  padding: '1.5rem',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+                  border: '1px solid #e5e7eb',
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '1rem' 
+                }}>
+                  <div style={{
+                    width: '48px',
+                    height: '48px',
+                    borderRadius: '12px',
+                    backgroundColor: '#e0f2fe',
+                    color: '#0369a1',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    <FileText size={24} />
+                  </div>
+                  <div>
+                    <span style={{ fontSize: '0.8rem', color: '#6b7280', display: 'block' }}>Comandas Cobradas</span>
+                    <strong style={{ fontSize: '1.5rem', color: 'var(--color-primary)', fontFamily: 'monospace' }}>{dailyOrdersCount}</strong>
+                  </div>
+                </div>
+
+                {/* Ticket Promedio */}
+                <div style={{ 
+                  backgroundColor: 'white',
+                  borderRadius: '16px',
+                  padding: '1.5rem',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+                  border: '1px solid #e5e7eb',
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '1rem' 
+                }}>
+                  <div style={{
+                    width: '48px',
+                    height: '48px',
+                    borderRadius: '12px',
+                    backgroundColor: '#fef3c7',
+                    color: '#b45309',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    <TrendingUp size={24} />
+                  </div>
+                  <div>
+                    <span style={{ fontSize: '0.8rem', color: '#6b7280', display: 'block' }}>Ticket Promedio</span>
+                    <strong style={{ fontSize: '1.5rem', color: 'var(--color-primary)', fontFamily: 'monospace' }}>${dailyAverageTicket}</strong>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: '1.5rem' }}>
+                {/* Ranking de Productos */}
+                <div style={{ 
+                  flex: '2 1 400px',
+                  backgroundColor: 'white',
+                  borderRadius: '16px',
+                  padding: '1.5rem',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+                  border: '1px solid #e5e7eb'
+                }}>
+                  <h3 style={{ fontSize: '1.15rem', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1.5rem' }}>
+                    <ShoppingBag size={20} style={{ color: 'var(--color-primary)' }} /> Control de Ventas por Producto
+                  </h3>
+                  
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                    {sortedDailyProducts.map((prod, idx) => {
+                      const percentage = Math.round((prod.qty / maxDailyQty) * 100);
+                      return (
+                        <div key={idx}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.45rem' }}>
+                            <span style={{ color: '#1f2937' }}>{prod.name}</span>
+                            <span style={{ color: 'var(--color-primary)', fontFamily: 'monospace' }}>{prod.qty} u.</span>
+                          </div>
+                          <div style={{ width: '100%', height: '8px', backgroundColor: '#e5e7eb', borderRadius: '9999px', overflow: 'hidden' }}>
+                            <div style={{ 
+                              width: `${percentage}%`, 
+                              height: '100%', 
+                              backgroundColor: 'var(--color-accent)', 
+                              borderRadius: '9999px',
+                              transition: 'width 0.5s ease-out'
+                            }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {sortedDailyProducts.length === 0 && (
+                      <div style={{ textAlign: 'center', padding: '2.5rem 0', color: '#9ca3af', fontSize: '0.875rem' }}>
+                        No se registraron ventas en la fecha seleccionada.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Acciones de Cierre de Caja */}
+                <div style={{ 
+                  flex: '1 1 300px', 
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  justifyContent: 'space-between', 
+                  border: '1px solid #c8e2b8', 
+                  backgroundColor: '#f4fbf0',
+                  borderRadius: '16px',
+                  padding: '1.5rem',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                }}>
+                  <div>
+                    <h3 style={{ fontSize: '1.15rem', color: '#274e13', marginBottom: '0.75rem' }}>Cerrar Caja Diaria</h3>
+                    <p style={{ fontSize: '0.85rem', color: '#385723', lineHeight: '1.5', marginBottom: '1.25rem' }}>
+                      Al realizar el cierre de caja, se guardará el estado consolidado de la facturación del día, cantidad de pedidos y ranking de productos en la base de datos de Firebase.
+                    </p>
+                    <div style={{
+                      backgroundColor: 'rgba(255, 255, 255, 0.8)',
+                      borderRadius: '10px',
+                      padding: '1rem',
+                      fontSize: '0.85rem',
+                      color: '#4b5563',
+                      border: '1px solid #e2ebd5',
+                      marginBottom: '1.5rem',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.5rem'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span>Fecha:</span><strong>{selectedDailyDate}</strong>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span>Venta Total:</span><strong>${dailyTotalSales}</strong>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span>Estado en DB:</span>
+                        <span style={{ 
+                          fontWeight: 'bold', 
+                          color: closings.some(c => c.id === `closing_${selectedDailyDate}`) ? '#16a34a' : '#d97706' 
+                        }}>
+                          {closings.some(c => c.id === `closing_${selectedDailyDate}`) ? '🔒 CERRADO' : '📂 ABIERTO'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handlePerformDailyClosing}
+                    style={{
+                      width: '100%',
+                      padding: '0.875rem',
+                      backgroundColor: 'var(--color-primary)',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '12px',
+                      fontSize: '0.9rem',
+                      fontWeight: 'bold',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      boxShadow: '0 4px 6px rgba(44, 62, 45, 0.15)',
+                      transition: 'all 0.2s'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--color-accent)'}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'var(--color-primary)'}
+                  >
+                    🔒 Registrar Cierre de Caja
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* CONTENIDO MONTHLY */}
+          {reportsSubTab === 'monthly' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+              {/* Selector de Mes */}
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'space-between', 
+                flexWrap: 'wrap', 
+                gap: '1rem',
+                backgroundColor: 'white',
+                borderRadius: '16px',
+                padding: '1.5rem',
+                border: '1px solid #e5e7eb',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+              }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Calendar size={20} style={{ color: 'var(--color-primary)' }} /> Seleccionar Mes de Análisis
+                  </h3>
+                  <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.8rem', color: '#6b7280' }}>
+                    Visualiza las estadísticas consolidadas e historial de cierres para el mes seleccionado.
+                  </p>
+                </div>
+                <input
+                  type="month"
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(e.target.value)}
+                  className="input"
+                  style={{ maxWidth: '220px', cursor: 'pointer' }}
+                />
+              </div>
+
+              {/* Grid de Métricas del Mes */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                gap: '1.5rem'
+              }}>
+                <div style={{ 
+                  backgroundColor: 'white',
+                  borderRadius: '16px',
+                  padding: '1.5rem',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+                  border: '1px solid #e5e7eb',
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '1rem' 
+                }}>
+                  <div style={{
+                    width: '48px',
+                    height: '48px',
+                    borderRadius: '12px',
+                    backgroundColor: '#e2f0d9',
+                    color: '#385723',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    <DollarSign size={24} />
+                  </div>
+                  <div>
+                    <span style={{ fontSize: '0.8rem', color: '#6b7280', display: 'block' }}>Ventas del Mes</span>
+                    <strong style={{ fontSize: '1.5rem', color: 'var(--color-primary)', fontFamily: 'monospace' }}>${monthlyTotalSales}</strong>
+                  </div>
+                </div>
+
+                <div style={{ 
+                  backgroundColor: 'white',
+                  borderRadius: '16px',
+                  padding: '1.5rem',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+                  border: '1px solid #e5e7eb',
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '1rem' 
+                }}>
+                  <div style={{
+                    width: '48px',
+                    height: '48px',
+                    borderRadius: '12px',
+                    backgroundColor: '#e0f2fe',
+                    color: '#0369a1',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    <FileText size={24} />
+                  </div>
+                  <div>
+                    <span style={{ fontSize: '0.8rem', color: '#6b7280', display: 'block' }}>Comandas Cobradas</span>
+                    <strong style={{ fontSize: '1.5rem', color: 'var(--color-primary)', fontFamily: 'monospace' }}>{monthlyOrdersCount}</strong>
+                  </div>
+                </div>
+
+                <div style={{ 
+                  backgroundColor: 'white',
+                  borderRadius: '16px',
+                  padding: '1.5rem',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+                  border: '1px solid #e5e7eb',
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '1rem' 
+                }}>
+                  <div style={{
+                    width: '48px',
+                    height: '48px',
+                    borderRadius: '12px',
+                    backgroundColor: '#fef3c7',
+                    color: '#b45309',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    <TrendingUp size={24} />
+                  </div>
+                  <div>
+                    <span style={{ fontSize: '0.8rem', color: '#6b7280', display: 'block' }}>Ticket Promedio</span>
+                    <strong style={{ fontSize: '1.5rem', color: 'var(--color-primary)', fontFamily: 'monospace' }}>${monthlyAverageTicket}</strong>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: '1.5rem' }}>
+                {/* Ranking de Productos del Mes */}
+                <div style={{ 
+                  flex: '1 1 350px',
+                  backgroundColor: 'white',
+                  borderRadius: '16px',
+                  padding: '1.5rem',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+                  border: '1px solid #e5e7eb'
+                }}>
+                  <h3 style={{ fontSize: '1.15rem', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1.5rem' }}>
+                    <ShoppingBag size={20} style={{ color: 'var(--color-primary)' }} /> Popularidad del Mes
+                  </h3>
+                  
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                    {sortedMonthlyProducts.map((prod, idx) => {
+                      const percentage = Math.round((prod.qty / maxMonthlyQty) * 100);
+                      return (
+                        <div key={idx}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.45rem' }}>
+                            <span style={{ color: '#1f2937' }}>{prod.name}</span>
+                            <span style={{ color: 'var(--color-primary)', fontFamily: 'monospace' }}>{prod.qty} u.</span>
+                          </div>
+                          <div style={{ width: '100%', height: '8px', backgroundColor: '#e5e7eb', borderRadius: '9999px', overflow: 'hidden' }}>
+                            <div style={{ 
+                              width: `${percentage}%`, 
+                              height: '100%', 
+                              backgroundColor: 'var(--color-primary)', 
+                              borderRadius: '9999px',
+                              transition: 'width 0.5s ease-out'
+                            }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {sortedMonthlyProducts.length === 0 && (
+                      <div style={{ textAlign: 'center', padding: '2.5rem 0', color: '#9ca3af', fontSize: '0.875rem' }}>
+                        Sin datos de ventas en este mes.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Historial de Cierres de este Mes */}
+                <div style={{ 
+                  flex: '2 1 450px',
+                  backgroundColor: 'white',
+                  borderRadius: '16px',
+                  padding: '1.5rem',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+                  border: '1px solid #e5e7eb'
+                }}>
+                  <h3 style={{ fontSize: '1.15rem', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1.5rem' }}>
+                    <CheckCircle size={20} style={{ color: 'var(--color-primary)' }} /> Cierres Diarios Registrados ({monthlyClosings.length})
+                  </h3>
+                  
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '400px', overflowY: 'auto' }}>
+                    {monthlyClosings.map((closing, idx) => (
+                      <div key={idx} style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '0.875rem 1.25rem',
+                        backgroundColor: '#f9fafb',
+                        borderRadius: '12px',
+                        border: '1px solid #e5e7eb'
+                      }}>
+                        <div>
+                          <strong style={{ fontSize: '0.95rem', color: 'var(--color-primary)' }}>{closing.date}</strong>
+                          <span style={{ fontSize: '0.8rem', color: '#6b7280', display: 'block', marginTop: '0.125rem' }}>
+                            {closing.ordersCount} comandas • Ticket Promedio: ${closing.averageTicket}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '1.15rem', fontWeight: 'bold', color: 'var(--color-primary)', fontFamily: 'monospace' }}>
+                          ${closing.totalSales}
+                        </span>
+                      </div>
+                    ))}
+
+                    {monthlyClosings.length === 0 && (
+                      <div style={{ textAlign: 'center', padding: '3.5rem 0', color: '#9ca3af', border: '2px dashed #e5e7eb', borderRadius: '14px', backgroundColor: '#f9fafb' }}>
+                        No se han registrado cierres de caja formales en este mes.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* CONTENIDO YEARLY */}
+          {reportsSubTab === 'yearly' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+              {/* Selector de Año */}
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'space-between', 
+                flexWrap: 'wrap', 
+                gap: '1rem',
+                backgroundColor: 'white',
+                borderRadius: '16px',
+                padding: '1.5rem',
+                border: '1px solid #e5e7eb',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+              }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Calendar size={20} style={{ color: 'var(--color-primary)' }} /> Seleccionar Año de Análisis
+                  </h3>
+                  <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.8rem', color: '#6b7280' }}>
+                    Visualiza el desempeño y distribución mensual para el año seleccionado.
+                  </p>
+                </div>
+                <select
+                  value={selectedYear}
+                  onChange={(e) => setSelectedYear(Number(e.target.value))}
+                  className="input"
+                  style={{ maxWidth: '220px', cursor: 'pointer' }}
+                >
+                  {[2025, 2026, 2027, 2028, 2029, 2030].map(y => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Tarjeta de Resumen Anual */}
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                backgroundColor: 'var(--color-primary)',
+                padding: '2rem',
+                borderRadius: '16px',
+                color: 'white',
+                boxShadow: '0 4px 10px rgba(44, 62, 45, 0.15)',
+                border: '1px solid rgba(255,255,255,0.1)'
+              }}>
+                <div>
+                  <span style={{ fontSize: '0.85rem', color: 'var(--color-accent)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Ingresos Anuales Consolidados</span>
+                  <h2 style={{ fontSize: '2.5rem', fontWeight: 'bold', color: 'white', margin: '0.25rem 0 0 0', fontFamily: 'monospace' }}>
+                    ${yearlyTotalSales}
+                  </h2>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <span style={{ fontSize: '0.85rem', color: '#e5e7eb', display: 'block' }}>Comandas del Año</span>
+                  <strong style={{ fontSize: '1.75rem', color: 'white', fontFamily: 'monospace' }}>{yearlyOrdersCount}</strong>
+                </div>
+              </div>
+
+              {/* Gráfico de Barras Mensual */}
+              <div style={{ 
+                backgroundColor: 'white',
+                borderRadius: '16px',
+                padding: '2rem 1.5rem',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+                border: '1px solid #e5e7eb'
+              }}>
+                <h3 style={{ fontSize: '1.15rem', marginBottom: '2.5rem', color: 'var(--color-primary)' }}>Evolución Mensual de Ventas</h3>
+                
+                {/* Contenedor del gráfico */}
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'flex-end',
+                  height: '320px',
+                  padding: '1rem 0',
+                  borderBottom: '2px solid #e5e7eb',
+                  gap: '6px',
+                  overflowX: 'auto'
+                }}>
+                  {yearlyMonthsData.map((m, idx) => {
+                    const barHeight = Math.max(8, Math.round((m.sales / maxYearlyMonthSales) * 100));
+                    return (
+                      <div key={idx} style={{
+                        flex: '1 1 50px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        height: '100%',
+                        justifyContent: 'flex-end'
+                      }}>
+                        {/* Tooltip / Valor sobre la barra */}
+                        {m.sales > 0 && (
+                          <span style={{
+                            fontSize: '0.725rem',
+                            fontWeight: 'bold',
+                            color: 'var(--color-primary)',
+                            marginBottom: '6px',
+                            whiteSpace: 'nowrap',
+                            fontFamily: 'monospace'
+                          }}>
+                            ${m.sales}
+                          </span>
+                        )}
+                        {/* Barra */}
+                        <div 
+                          title={`${m.name}: $${m.sales} (${m.count} comandas)`}
+                          style={{
+                            width: '80%',
+                            maxWidth: '36px',
+                            height: `${barHeight}%`,
+                            background: 'linear-gradient(180deg, var(--color-accent) 0%, var(--color-primary) 100%)',
+                            borderRadius: '6px 6px 0 0',
+                            transition: 'height 0.8s ease',
+                            cursor: 'pointer',
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+                          }} 
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.opacity = '0.85';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.opacity = '1';
+                          }}
+                        />
+                        {/* Nombre del mes */}
+                        <span style={{
+                          fontSize: '0.75rem',
+                          color: '#4b5563',
+                          fontWeight: '600',
+                          marginTop: '8px'
+                        }}>
+                          {m.name}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* CONTENIDO HISTORIAL GENERAL */}
+          {reportsSubTab === 'history' && (
+            <div style={{ 
+              backgroundColor: 'white',
+              borderRadius: '16px',
+              padding: '1.5rem',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+              border: '1px solid #e5e7eb'
+            }}>
+              <h3 style={{ fontSize: '1.2rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <CheckSquare size={20} style={{ color: 'var(--color-primary)' }} /> Listado Histórico de Cierres de Caja
+              </h3>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {closings.map((closing, idx) => (
+                  <div key={idx} style={{
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '12px',
+                    padding: '1.25rem',
+                    backgroundColor: 'white',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '1rem',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+                  }}>
+                    {/* Header del Cierre */}
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: '0.5rem',
+                      borderBottom: '1px solid #f3f4f6',
+                      paddingBottom: '0.75rem'
+                    }}>
+                      <div>
+                        <strong style={{ fontSize: '1.1rem', color: 'var(--color-primary)' }}>Cierre de Caja {closing.date}</strong>
+                        <span style={{ fontSize: '0.75rem', color: '#9ca3af', display: 'block', marginTop: '0.125rem' }}>
+                          Guardado el {new Date(closing.createdAt).toLocaleDateString()} a las {new Date(closing.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <span style={{ fontSize: '1.4rem', fontWeight: 'bold', color: 'var(--color-primary)', fontFamily: 'monospace' }}>
+                          ${closing.totalSales}
+                        </span>
+                        <span style={{ display: 'block', fontSize: '0.75rem', color: '#16a34a', fontWeight: 'bold', marginTop: '0.125rem' }}>
+                          ✓ REGISTRADO
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Detalles del Cierre */}
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: '1rem',
+                      fontSize: '0.85rem',
+                      color: '#4b5563'
+                    }}>
+                      <div>
+                        <strong>Comandas Procesadas:</strong> <span style={{ fontWeight: '600' }}>{closing.ordersCount}</span>
+                      </div>
+                      <div>
+                        <strong>Ticket Promedio:</strong> <span style={{ fontWeight: '600', fontFamily: 'monospace' }}>${closing.averageTicket}</span>
+                      </div>
+                      <div style={{ flex: '1 1 100%', marginTop: '0.25rem' }}>
+                        <strong style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.8rem', color: '#374151' }}>Desglose de Ventas:</strong>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.375rem' }}>
+                          {closing.popularItems && closing.popularItems.map((item, idy) => (
+                            <span key={idy} style={{
+                              fontSize: '0.75rem',
+                              backgroundColor: '#f3f4f6',
+                              color: '#4b5563',
+                              padding: '0.125rem 0.5rem',
+                              borderRadius: '6px',
+                              fontWeight: '500'
+                            }}>
+                              {item.qty}x {item.name}
+                            </span>
+                          ))}
+                          {(!closing.popularItems || closing.popularItems.length === 0) && (
+                            <span style={{ fontSize: '0.8rem', color: '#9ca3af', fontStyle: 'italic' }}>Sin detalles de productos vendidos</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                {closings.length === 0 && (
+                  <div style={{ textAlign: 'center', padding: '4rem 0', color: '#9ca3af', border: '2px dashed #e5e7eb', borderRadius: '16px', backgroundColor: '#f9fafb' }}>
+                    No se registran cierres de caja guardados en la base de datos.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
