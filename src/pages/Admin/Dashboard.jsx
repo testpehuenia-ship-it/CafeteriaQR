@@ -21,6 +21,290 @@ import {
   ShoppingBag
 } from 'lucide-react';
 
+const PRODUCT_COLORS = [
+  '#4e79a7', // Muted Blue
+  '#f28e2b', // Soft Orange
+  '#e15759', // Muted Red
+  '#76b7b2', // Teal
+  '#59a14f', // Soft Green
+  '#edc948', // Soft Yellow
+  '#b07aa1', // Lavender
+  '#ff9da7', // Soft Pink
+  '#9c755f', // Muted Brown
+  '#bab0ac', // Light Gray
+  '#2C3E2D', // Forest Green
+  '#8B5A2B', // Warm Wood
+  '#D4A373', // Light Wood / Sand
+  '#ccd5ae', // Olive
+  '#e8a598', // Soft Terracotta
+  '#809bce', // Periwinkle
+  '#b8e0d2', // Soft Mint
+  '#f7d6e0', // Pale Rose
+  '#b3cde3'  // Pastel Muted Ice Blue
+];
+
+const getProductColor = (productName) => {
+  if (!productName) return '#9ca3af';
+  let hash = 0;
+  for (let i = 0; i < productName.length; i++) {
+    hash = productName.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const index = Math.abs(hash) % PRODUCT_COLORS.length;
+  return PRODUCT_COLORS[index];
+};
+
+const renderProductChart = (products, chartType, maxQty) => {
+  if (products.length === 0) return null;
+
+  if (chartType === 'horizontal') {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        {products.map((prod, idx) => {
+          const percentage = Math.round((prod.qty / maxQty) * 100);
+          const color = getProductColor(prod.name);
+          return (
+            <div key={idx}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.45rem', alignItems: 'center' }}>
+                <span style={{ color: '#1f2937', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', backgroundColor: color }} />
+                  {prod.name}
+                </span>
+                <span style={{ color: 'var(--color-primary)', fontFamily: 'monospace' }}>{prod.qty} u.</span>
+              </div>
+              <div style={{ width: '100%', height: '8px', backgroundColor: '#e5e7eb', borderRadius: '9999px', overflow: 'hidden' }}>
+                <div style={{ 
+                  width: `${percentage}%`, 
+                  height: '100%', 
+                  backgroundColor: color, 
+                  borderRadius: '9999px',
+                  transition: 'width 0.5s ease-out'
+                }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  if (chartType === 'vertical') {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'flex-end', 
+          justifyContent: 'space-around', 
+          height: '220px', 
+          padding: '1rem 0.5rem 0.5rem 0.5rem', 
+          borderBottom: '1px solid #e5e7eb',
+          gap: '8px',
+          overflowX: 'auto'
+        }}>
+          {products.map((prod, idx) => {
+            const percentage = Math.round((prod.qty / maxQty) * 100);
+            const color = getProductColor(prod.name);
+            return (
+              <div 
+                key={idx} 
+                style={{ 
+                  flex: '1 1 0%', 
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  alignItems: 'center', 
+                  height: '100%', 
+                  justifyContent: 'flex-end', 
+                  minWidth: '45px',
+                  maxWidth: '70px'
+                }} 
+                title={`${prod.name}: ${prod.qty} unidades`}
+              >
+                <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#4b5563', marginBottom: '4px', fontFamily: 'monospace' }}>
+                  {prod.qty}
+                </span>
+                <div style={{
+                  width: '70%',
+                  height: `${Math.max(percentage, 5)}%`,
+                  backgroundColor: color,
+                  borderRadius: '6px 6px 0 0',
+                  transition: 'height 0.6s cubic-bezier(0.16, 1, 0.3, 1)',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+                  cursor: 'pointer'
+                }} />
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 16px', justifyContent: 'center', marginTop: '0.5rem' }}>
+          {products.map((prod, idx) => (
+            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#4b5563' }}>
+              <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', backgroundColor: getProductColor(prod.name) }} />
+              <span style={{ fontWeight: '500' }}>{prod.name}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (chartType === 'donut') {
+    const totalQty = products.reduce((sum, p) => sum + p.qty, 0);
+    let accumulatedPercent = 0;
+    return (
+      <div style={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center', 
+        flexWrap: 'wrap', 
+        gap: '2rem', 
+        padding: '0.5rem 0' 
+      }}>
+        <div style={{ width: '150px', height: '150px', transform: 'rotate(-90deg)', flexShrink: 0, position: 'relative' }}>
+          <svg viewBox="0 0 42 42" width="100%" height="100%">
+            <circle cx="21" cy="21" r="15.91549430918954" fill="transparent" stroke="#f3f4f6" strokeWidth="6" />
+            
+            {products.map((prod, idx) => {
+              const sharePercent = (prod.qty / totalQty) * 100;
+              const color = getProductColor(prod.name);
+              const offset = 100 - accumulatedPercent;
+              accumulatedPercent += sharePercent;
+              return (
+                <circle
+                  key={idx}
+                  cx="21"
+                  cy="21"
+                  r="15.91549430918954"
+                  fill="transparent"
+                  stroke={color}
+                  strokeWidth="6"
+                  strokeDasharray={`${sharePercent} ${100 - sharePercent}`}
+                  strokeDashoffset={offset}
+                  style={{ transition: 'stroke-dasharray 0.5s ease, stroke-dashoffset 0.5s ease' }}
+                />
+              );
+            })}
+            
+            <circle cx="21" cy="21" r="12" fill="#ffffff" style={{ transform: 'rotate(90deg)', transformOrigin: 'center' }} />
+          </svg>
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            alignItems: 'center',
+            pointerEvents: 'none',
+            transform: 'rotate(90deg)'
+          }}>
+            <span style={{ fontSize: '1.25rem', fontWeight: 'bold', color: 'var(--color-primary)', fontFamily: 'monospace', lineHeight: '1' }}>{totalQty}</span>
+            <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 'bold', marginTop: '2px', letterSpacing: '0.5px' }}>TOTAL</span>
+          </div>
+        </div>
+
+        <div style={{ flex: '1 1 180px', display: 'flex', flexDirection: 'column', gap: '8px', minWidth: '180px' }}>
+          {products.map((prod, idx) => {
+            const sharePercent = Math.round((prod.qty / totalQty) * 100);
+            const color = getProductColor(prod.name);
+            return (
+              <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#4b5563' }}>
+                  <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', backgroundColor: color }} />
+                  {prod.name}
+                </span>
+                <span style={{ fontWeight: '600', color: '#1f2937', fontFamily: 'monospace' }}>
+                  {prod.qty} u. ({sharePercent}%)
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  if (chartType === 'bubbles') {
+    const minSize = 65;
+    const maxSize = 115;
+    return (
+      <div style={{ 
+        display: 'flex', 
+        flexWrap: 'wrap', 
+        gap: '12px', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        padding: '1rem 0',
+        minHeight: '200px'
+      }}>
+        {products.map((prod, idx) => {
+          const color = getProductColor(prod.name);
+          const size = products.length === 1 
+            ? maxSize 
+            : minSize + ((prod.qty / maxQty) * (maxSize - minSize));
+          return (
+            <div
+              key={idx}
+              style={{
+                width: `${size}px`,
+                height: `${size}px`,
+                borderRadius: '50%',
+                backgroundColor: color,
+                color: 'white',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '8px',
+                textAlign: 'center',
+                boxShadow: '0 4px 10px rgba(0,0,0,0.1)',
+                transition: 'transform 0.2s ease',
+                cursor: 'pointer',
+                userSelect: 'none'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'scale(1.08)';
+                e.currentTarget.style.boxShadow = '0 6px 14px rgba(0,0,0,0.15)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.boxShadow = '0 4px 10px rgba(0,0,0,0.1)';
+              }}
+              title={`${prod.name}: ${prod.qty} u.`}
+            >
+              <span style={{ 
+                fontSize: size < 80 ? '0.65rem' : '0.75rem', 
+                fontWeight: 'bold', 
+                overflow: 'hidden', 
+                textOverflow: 'ellipsis', 
+                display: '-webkit-box', 
+                WebkitLineClamp: 2, 
+                WebkitBoxOrient: 'vertical', 
+                width: '100%', 
+                lineHeight: '1.1',
+                textShadow: '0 1px 2px rgba(0,0,0,0.3)'
+              }}>
+                {prod.name}
+              </span>
+              <span style={{ 
+                fontSize: size < 80 ? '0.8rem' : '1rem', 
+                fontWeight: '800', 
+                marginTop: '3px', 
+                fontFamily: 'monospace',
+                textShadow: '0 1px 2px rgba(0,0,0,0.3)'
+              }}>
+                {prod.qty}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  return null;
+};
+
 const Dashboard = () => {
   const { 
     orders, 
@@ -75,6 +359,8 @@ const Dashboard = () => {
   const [selectedDailyDate, setSelectedDailyDate] = useState(() => getLocalDateString());
   const [selectedMonth, setSelectedMonth] = useState(() => getLocalDateString().substring(0, 7)); // YYYY-MM
   const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear());
+  const [dailyChartType, setDailyChartType] = useState('horizontal'); // 'horizontal', 'vertical', 'donut', 'bubbles'
+  const [monthlyChartType, setMonthlyChartType] = useState('horizontal'); // 'horizontal', 'vertical', 'donut', 'bubbles'
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   
@@ -1217,31 +1503,36 @@ const Dashboard = () => {
                   boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
                   border: '1px solid #e5e7eb'
                 }}>
-                  <h3 style={{ fontSize: '1.15rem', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1.5rem' }}>
-                    <ShoppingBag size={20} style={{ color: 'var(--color-primary)' }} /> Control de Ventas por Producto
-                  </h3>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '1.5rem' }}>
+                    <h3 style={{ fontSize: '1.15rem', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                      <ShoppingBag size={20} style={{ color: 'var(--color-primary)' }} /> Control de Ventas por Producto
+                    </h3>
+                    <div style={{ display: 'flex', gap: '4px', backgroundColor: '#f3f4f6', padding: '4px', borderRadius: '8px' }}>
+                      {['horizontal', 'vertical', 'donut', 'bubbles'].map((type) => (
+                        <button
+                          key={type}
+                          onClick={() => setDailyChartType(type)}
+                          style={{
+                            padding: '6px 10px',
+                            border: 'none',
+                            borderRadius: '6px',
+                            fontSize: '0.75rem',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                            backgroundColor: dailyChartType === type ? 'white' : 'transparent',
+                            color: dailyChartType === type ? 'var(--color-primary)' : '#6b7280',
+                            boxShadow: dailyChartType === type ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                            transition: 'all 0.2s'
+                          }}
+                        >
+                          {type === 'horizontal' ? '📊 Horiz.' : type === 'vertical' ? '📶 Vert.' : type === 'donut' ? '🍩 Rosca' : '🔮 Burbujas'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                    {sortedDailyProducts.map((prod, idx) => {
-                      const percentage = Math.round((prod.qty / maxDailyQty) * 100);
-                      return (
-                        <div key={idx}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.45rem' }}>
-                            <span style={{ color: '#1f2937' }}>{prod.name}</span>
-                            <span style={{ color: 'var(--color-primary)', fontFamily: 'monospace' }}>{prod.qty} u.</span>
-                          </div>
-                          <div style={{ width: '100%', height: '8px', backgroundColor: '#e5e7eb', borderRadius: '9999px', overflow: 'hidden' }}>
-                            <div style={{ 
-                              width: `${percentage}%`, 
-                              height: '100%', 
-                              backgroundColor: 'var(--color-accent)', 
-                              borderRadius: '9999px',
-                              transition: 'width 0.5s ease-out'
-                            }} />
-                          </div>
-                        </div>
-                      );
-                    })}
+                    {renderProductChart(sortedDailyProducts, dailyChartType, maxDailyQty)}
 
                     {sortedDailyProducts.length === 0 && (
                       <div style={{ textAlign: 'center', padding: '2.5rem 0', color: '#9ca3af', fontSize: '0.875rem' }}>
@@ -1460,31 +1751,36 @@ const Dashboard = () => {
                   boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
                   border: '1px solid #e5e7eb'
                 }}>
-                  <h3 style={{ fontSize: '1.15rem', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1.5rem' }}>
-                    <ShoppingBag size={20} style={{ color: 'var(--color-primary)' }} /> Popularidad del Mes
-                  </h3>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '1.5rem' }}>
+                    <h3 style={{ fontSize: '1.15rem', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                      <ShoppingBag size={20} style={{ color: 'var(--color-primary)' }} /> Popularidad del Mes
+                    </h3>
+                    <div style={{ display: 'flex', gap: '4px', backgroundColor: '#f3f4f6', padding: '4px', borderRadius: '8px' }}>
+                      {['horizontal', 'vertical', 'donut', 'bubbles'].map((type) => (
+                        <button
+                          key={type}
+                          onClick={() => setMonthlyChartType(type)}
+                          style={{
+                            padding: '6px 10px',
+                            border: 'none',
+                            borderRadius: '6px',
+                            fontSize: '0.75rem',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                            backgroundColor: monthlyChartType === type ? 'white' : 'transparent',
+                            color: monthlyChartType === type ? 'var(--color-primary)' : '#6b7280',
+                            boxShadow: monthlyChartType === type ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                            transition: 'all 0.2s'
+                          }}
+                        >
+                          {type === 'horizontal' ? '📊 Horiz.' : type === 'vertical' ? '📶 Vert.' : type === 'donut' ? '🍩 Rosca' : '🔮 Burbujas'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                    {sortedMonthlyProducts.map((prod, idx) => {
-                      const percentage = Math.round((prod.qty / maxMonthlyQty) * 100);
-                      return (
-                        <div key={idx}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.45rem' }}>
-                            <span style={{ color: '#1f2937' }}>{prod.name}</span>
-                            <span style={{ color: 'var(--color-primary)', fontFamily: 'monospace' }}>{prod.qty} u.</span>
-                          </div>
-                          <div style={{ width: '100%', height: '8px', backgroundColor: '#e5e7eb', borderRadius: '9999px', overflow: 'hidden' }}>
-                            <div style={{ 
-                              width: `${percentage}%`, 
-                              height: '100%', 
-                              backgroundColor: 'var(--color-primary)', 
-                              borderRadius: '9999px',
-                              transition: 'width 0.5s ease-out'
-                            }} />
-                          </div>
-                        </div>
-                      );
-                    })}
+                    {renderProductChart(sortedMonthlyProducts, monthlyChartType, maxMonthlyQty)}
 
                     {sortedMonthlyProducts.length === 0 && (
                       <div style={{ textAlign: 'center', padding: '2.5rem 0', color: '#9ca3af', fontSize: '0.875rem' }}>
