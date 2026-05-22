@@ -475,7 +475,9 @@ const Dashboard = () => {
   const [reportsSubTab, setReportsSubTab] = useState('daily'); // 'daily', 'monthly', 'yearly', 'history'
   
   // Get current date/month/year in local time safely
-  const getLocalDateString = (date = new Date()) => {
+  const getLocalDateString = (dateInput = new Date()) => {
+    const date = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
+    if (!date || isNaN(date.getTime())) return '';
     const offset = date.getTimezoneOffset();
     const localDate = new Date(date.getTime() - (offset * 60 * 1000));
     return localDate.toISOString().split('T')[0];
@@ -962,7 +964,7 @@ const Dashboard = () => {
   const dailyOrders = orders.filter(o => 
     o.status === 'finalizado' && 
     o.createdAt && 
-    o.createdAt.split('T')[0] === selectedDailyDate
+    getLocalDateString(o.createdAt) === selectedDailyDate
   );
   
   const dailyTotalSales = dailyOrders.reduce((sum, o) => sum + o.total, 0);
@@ -995,7 +997,7 @@ const Dashboard = () => {
   const monthlyOrders = orders.filter(o => 
     o.status === 'finalizado' && 
     o.createdAt && 
-    o.createdAt.startsWith(selectedMonth)
+    getLocalDateString(o.createdAt).startsWith(selectedMonth)
   );
   
   const monthlyTotalSales = monthlyOrders.reduce((sum, o) => sum + o.total, 0);
@@ -1024,7 +1026,7 @@ const Dashboard = () => {
   const yearlyOrders = orders.filter(o => 
     o.status === 'finalizado' && 
     o.createdAt && 
-    o.createdAt.startsWith(String(selectedYear))
+    getLocalDateString(o.createdAt).startsWith(String(selectedYear))
   );
   
   const yearlyTotalSales = yearlyOrders.reduce((sum, o) => sum + o.total, 0);
@@ -1038,7 +1040,7 @@ const Dashboard = () => {
   const yearlyMonthsData = Array.from({ length: 12 }, (_, i) => {
     const monthStr = String(i + 1).padStart(2, '0');
     const monthPrefix = `${selectedYear}-${monthStr}`;
-    const monthOrders = yearlyOrders.filter(o => o.createdAt.startsWith(monthPrefix));
+    const monthOrders = yearlyOrders.filter(o => getLocalDateString(o.createdAt).startsWith(monthPrefix));
     const sales = monthOrders.reduce((sum, o) => sum + o.total, 0);
     return {
       name: monthNames[i],
