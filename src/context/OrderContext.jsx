@@ -229,6 +229,7 @@ export const OrderProvider = ({ children }) => {
         await setDoc(doc(db, 'orders', newId), newOrder);
       } catch (e) {
         console.error('Error al guardar pedido en Firestore:', e);
+        throw new Error('No se pudo enviar el pedido a la base de datos (Firebase). Por favor, intenta nuevamente o consulta al personal.');
       }
     } else {
       try {
@@ -242,10 +243,11 @@ export const OrderProvider = ({ children }) => {
         }
       } catch (e) {
         console.error('Error al enviar el pedido a la API local:', e);
+        throw new Error('No se pudo enviar el pedido al servidor local. Por favor, intenta nuevamente o consulta al personal.');
       }
     }
 
-    // Actualizamos el estado local
+    // Actualizamos el estado local (solo si se guardó correctamente)
     setOrders(prev => [newOrder, ...prev]);
     setActiveOrderId(newId);
     clearCart();

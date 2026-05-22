@@ -35,6 +35,7 @@ const Checkout = () => {
         navigate('/order-status');
       } catch (err) {
         console.error('Error submitting order:', err);
+        alert(err.message || 'Ocurrió un error al enviar tu pedido. Por favor, intenta de nuevo o avisa al personal de caja.');
       } finally {
         setIsSubmitting(false);
       }

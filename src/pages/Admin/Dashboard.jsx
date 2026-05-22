@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useOrders } from '../../context/OrderContext';
+import { db, isFirebaseConfigured } from '../../firebase';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { 
   Clock, 
   ChefHat, 
@@ -326,15 +328,137 @@ const Dashboard = () => {
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
 
+  // Password management states
+  const [adminPassword, setAdminPassword] = useState(() => {
+    return localStorage.getItem('patagonia_admin_password') || 'patagonia2026';
+  });
+  
+  // Password Recovery States
+  const [isRecovering, setIsRecovering] = useState(false);
+  const [recoveryKey, setRecoveryKey] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [recoveryError, setRecoveryError] = useState('');
+
+  // Password Change States (Security Tab)
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPasswordTab, setNewPasswordTab] = useState('');
+  const [confirmNewPasswordTab, setConfirmNewPasswordTab] = useState('');
+  const [changePasswordError, setChangePasswordError] = useState('');
+  const [changePasswordSuccess, setChangePasswordSuccess] = useState('');
+
+  // Load password from Firestore on mount
+  useEffect(() => {
+    if (isFirebaseConfigured && db) {
+      const fetchPassword = async () => {
+        try {
+          const docRef = doc(db, 'settings', 'security');
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists() && docSnap.data().password) {
+            setAdminPassword(docSnap.data().password);
+            localStorage.setItem('patagonia_admin_password', docSnap.data().password);
+          }
+        } catch (e) {
+          console.error("Error al obtener la contraseña desde Firestore:", e);
+        }
+      };
+      fetchPassword();
+    }
+  }, []);
+
   const handleLogin = (e) => {
     e.preventDefault();
-    if (username.trim() === 'admin' && password === 'patagonia2026') {
+    if (username.trim() === 'admin' && password === adminPassword) {
       setIsAuthenticated(true);
       sessionStorage.setItem('patagonia_admin_authenticated', 'true');
       setLoginError('');
       window.dispatchEvent(new Event('admin-auth-change'));
     } else {
       setLoginError('Usuario o clave incorrectos.');
+    }
+  };
+
+  const handleRecovery = async (e) => {
+    e.preventDefault();
+    if (recoveryKey.trim() !== 'PATAGONIA_RECOVERY') {
+      setRecoveryError('La clave de recuperación maestra es incorrecta.');
+      return;
+    }
+    if (newPassword.length < 4) {
+      setRecoveryError('La nueva contraseña debe tener al menos 4 caracteres.');
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      setRecoveryError('Las contraseñas no coinciden.');
+      return;
+    }
+
+    try {
+      // Guardar localmente
+      localStorage.setItem('patagonia_admin_password', newPassword);
+      setAdminPassword(newPassword);
+
+      // Guardar en Firestore
+      if (isFirebaseConfigured && db) {
+        await setDoc(doc(db, 'settings', 'security'), { password: newPassword });
+      }
+
+      // Autenticar de inmediato
+      setIsAuthenticated(true);
+      sessionStorage.setItem('patagonia_admin_authenticated', 'true');
+      window.dispatchEvent(new Event('admin-auth-change'));
+      
+      // Limpiar estados de recuperación
+      setIsRecovering(false);
+      setRecoveryKey('');
+      setNewPassword('');
+      setConfirmNewPassword('');
+      setRecoveryError('');
+    } catch (err) {
+      console.error("Error al restablecer la contraseña:", err);
+      setRecoveryError('Ocurrió un error al guardar la nueva contraseña.');
+    }
+  };
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    if (currentPassword !== adminPassword) {
+      setChangePasswordError('La contraseña actual es incorrecta.');
+      setChangePasswordSuccess('');
+      return;
+    }
+    if (newPasswordTab.length < 4) {
+      setChangePasswordError('La nueva contraseña debe tener al menos 4 caracteres.');
+      setChangePasswordSuccess('');
+      return;
+    }
+    if (newPasswordTab !== confirmNewPasswordTab) {
+      setChangePasswordError('La nueva contraseña y la confirmación no coinciden.');
+      setChangePasswordSuccess('');
+      return;
+    }
+
+    try {
+      // Guardar localmente
+      localStorage.setItem('patagonia_admin_password', newPasswordTab);
+      setAdminPassword(newPasswordTab);
+
+      // Guardar en Firestore
+      if (isFirebaseConfigured && db) {
+        await setDoc(doc(db, 'settings', 'security'), { password: newPasswordTab });
+      }
+
+      setChangePasswordSuccess('¡Contraseña cambiada con éxito!');
+      setChangePasswordError('');
+      
+      // Limpiar campos
+      setCurrentPassword('');
+      setNewPasswordTab('');
+      setConfirmNewPasswordTab('');
+    } catch (err) {
+      console.error("Error al cambiar la contraseña:", err);
+      setChangePasswordError('Ocurrió un error al guardar la nueva contraseña.');
+      setChangePasswordSuccess('');
     }
   };
 
@@ -466,6 +590,200 @@ const Dashboard = () => {
                            getOrdersByStatus('despachado').length;
 
   if (!isAuthenticated) {
+    if (isRecovering) {
+      return (
+        <div style={{
+          minHeight: '85vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontFamily: 'var(--font-sans)',
+          padding: '2rem 1rem'
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '24px',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.06)',
+            border: '1px solid #e5e0d8',
+            padding: '3rem 2rem',
+            width: '100%',
+            maxWidth: '400px',
+            textAlign: 'center'
+          }}>
+            <div style={{
+              width: '64px',
+              height: '64px',
+              borderRadius: '50%',
+              backgroundColor: 'var(--color-primary)',
+              color: 'white',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 1.5rem auto',
+              boxShadow: '0 8px 16px rgba(44, 62, 45, 0.15)'
+            }}>
+              <Lock size={28} />
+            </div>
+
+            <h2 style={{
+              fontSize: '1.6rem',
+              fontFamily: 'var(--font-serif)',
+              color: 'var(--color-primary)',
+              margin: '0 0 0.5rem 0'
+            }}>
+              Restablecer Clave
+            </h2>
+            <p style={{
+              color: '#6b7280',
+              fontSize: '0.85rem',
+              margin: '0 0 2rem 0'
+            }}>
+              Ingresa la Clave Maestra de Recuperación para definir una nueva clave.
+            </p>
+
+            <form onSubmit={handleRecovery} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              {recoveryError && (
+                <div style={{
+                  backgroundColor: '#fee2e2',
+                  color: '#b91c1c',
+                  padding: '0.75rem',
+                  borderRadius: '8px',
+                  fontSize: '0.85rem',
+                  fontWeight: '600',
+                  textAlign: 'left'
+                }}>
+                  {recoveryError}
+                </div>
+              )}
+
+              <div style={{ textAlign: 'left' }}>
+                <label style={{
+                  display: 'block',
+                  fontSize: '0.85rem',
+                  fontWeight: '600',
+                  color: '#4b5563',
+                  marginBottom: '0.375rem'
+                }}>
+                  Clave Maestra de Recuperación
+                </label>
+                <input
+                  type="password"
+                  value={recoveryKey}
+                  onChange={(e) => setRecoveryKey(e.target.value)}
+                  placeholder="Clave maestra"
+                  required
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem 1rem',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '10px',
+                    outline: 'none',
+                    fontSize: '0.95rem',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+
+              <div style={{ textAlign: 'left' }}>
+                <label style={{
+                  display: 'block',
+                  fontSize: '0.85rem',
+                  fontWeight: '600',
+                  color: '#4b5563',
+                  marginBottom: '0.375rem'
+                }}>
+                  Nueva Contraseña
+                </label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem 1rem',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '10px',
+                    outline: 'none',
+                    fontSize: '0.95rem',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+
+              <div style={{ textAlign: 'left' }}>
+                <label style={{
+                  display: 'block',
+                  fontSize: '0.85rem',
+                  fontWeight: '600',
+                  color: '#4b5563',
+                  marginBottom: '0.375rem'
+                }}>
+                  Confirmar Nueva Contraseña
+                </label>
+                <input
+                  type="password"
+                  value={confirmNewPassword}
+                  onChange={(e) => setConfirmNewPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem 1rem',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '10px',
+                    outline: 'none',
+                    fontSize: '0.95rem',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+
+              <button
+                type="submit"
+                style={{
+                  width: '100%',
+                  padding: '0.875rem',
+                  backgroundColor: 'var(--color-primary)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '12px',
+                  fontSize: '0.95rem',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  marginTop: '0.5rem',
+                  boxShadow: '0 4px 10px rgba(44, 62, 45, 0.15)'
+                }}
+              >
+                Restablecer e Iniciar Sesión 🔑
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRecovering(false);
+                  setRecoveryError('');
+                }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#6b7280',
+                  fontSize: '0.9rem',
+                  cursor: 'pointer',
+                  marginTop: '0.5rem',
+                  textDecoration: 'underline'
+                }}
+              >
+                Volver al Login
+              </button>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div style={{
         minHeight: '85vh',
@@ -607,8 +925,29 @@ const Dashboard = () => {
               Iniciar Sesión 🔓
             </button>
           </form>
+
+          <div style={{ marginTop: '1rem' }}>
+            <button
+              onClick={() => {
+                setIsRecovering(true);
+                setLoginError('');
+              }}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--color-primary)',
+                fontSize: '0.9rem',
+                textDecoration: 'underline',
+                cursor: 'pointer',
+                fontWeight: '600'
+              }}
+            >
+              ¿Olvidaste tu contraseña? 🔑
+            </button>
+          </div>
+
           <div style={{ marginTop: '1.5rem', fontSize: '0.8rem', color: '#9ca3af' }}>
-            Usuario: <strong>admin</strong> | Clave: <strong>patagonia2026</strong>
+            Usuario: <strong>admin</strong> | Clave: <strong>{adminPassword}</strong>
           </div>
         </div>
       </div>
@@ -776,6 +1115,17 @@ const Dashboard = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <div style={{ 
             fontSize: '0.875rem', 
+            backgroundColor: isFirebaseConfigured ? '#e2f0d9' : '#fef3c7', 
+            color: isFirebaseConfigured ? '#385723' : '#b45309', 
+            padding: '0.375rem 1rem', 
+            borderRadius: '9999px',
+            fontWeight: '500',
+            border: isFirebaseConfigured ? '1px solid #c5e0b4' : '1px solid #fde68a'
+          }}>
+            {isFirebaseConfigured ? '🟢 Nube Activa' : '⚠️ Modo Local'}
+          </div>
+          <div style={{ 
+            fontSize: '0.875rem', 
             backgroundColor: 'var(--color-primary)', 
             color: 'white', 
             padding: '0.375rem 1rem', 
@@ -893,6 +1243,24 @@ const Dashboard = () => {
           }}
         >
           Reportes y Cierre 📊
+        </button>
+        <button 
+          onClick={() => setActiveTab('security')}
+          style={{
+            padding: '0.75rem 1.25rem',
+            backgroundColor: 'transparent',
+            border: 'none',
+            borderBottom: activeTab === 'security' ? '3px solid var(--color-primary)' : '3px solid transparent',
+            color: activeTab === 'security' ? 'var(--color-primary)' : '#6b7280',
+            fontWeight: '600',
+            fontSize: '0.95rem',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            outline: 'none',
+            whiteSpace: 'nowrap'
+          }}
+        >
+          Seguridad 🔑
         </button>
       </div>
 
@@ -2077,6 +2445,133 @@ const Dashboard = () => {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Contenido de la pestaña de SEGURIDAD */}
+      {activeTab === 'security' && (
+        <div className="animate-fade-in" style={{
+          backgroundColor: 'white',
+          borderRadius: '16px',
+          padding: '2rem',
+          boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
+          maxWidth: '500px',
+          margin: '0 auto',
+          border: '1px solid #e5e7eb'
+        }}>
+          <h2 style={{ fontFamily: 'var(--font-serif)', color: 'var(--color-primary)', fontSize: '1.5rem', marginBottom: '1rem', borderBottom: '1px solid #f3f4f6', paddingBottom: '0.5rem' }}>
+            Cambiar Contraseña 🔑
+          </h2>
+          <p style={{ color: '#6b7280', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
+            Actualiza tu contraseña de acceso para el panel de administración.
+          </p>
+
+          <form onSubmit={handleChangePassword} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            {changePasswordError && (
+              <div style={{
+                backgroundColor: '#fee2e2',
+                color: '#b91c1c',
+                padding: '0.75rem',
+                borderRadius: '8px',
+                fontSize: '0.85rem',
+                fontWeight: '600'
+              }}>
+                {changePasswordError}
+              </div>
+            )}
+            {changePasswordSuccess && (
+              <div style={{
+                backgroundColor: '#ecfdf5',
+                color: '#047857',
+                padding: '0.75rem',
+                borderRadius: '8px',
+                fontSize: '0.85rem',
+                fontWeight: '600'
+              }}>
+                {changePasswordSuccess}
+              </div>
+            )}
+
+            <div style={{ textAlign: 'left' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', color: '#4b5563', marginBottom: '0.375rem' }}>
+                Contraseña Actual
+              </label>
+              <input
+                type="password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                required
+                style={{
+                  width: '100%',
+                  padding: '0.75rem 1rem',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '10px',
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }}
+              />
+            </div>
+
+            <div style={{ textAlign: 'left' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', color: '#4b5563', marginBottom: '0.375rem' }}>
+                Nueva Contraseña
+              </label>
+              <input
+                type="password"
+                value={newPasswordTab}
+                onChange={(e) => setNewPasswordTab(e.target.value)}
+                required
+                style={{
+                  width: '100%',
+                  padding: '0.75rem 1rem',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '10px',
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }}
+              />
+            </div>
+
+            <div style={{ textAlign: 'left' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', color: '#4b5563', marginBottom: '0.375rem' }}>
+                Confirmar Nueva Contraseña
+              </label>
+              <input
+                type="password"
+                value={confirmNewPasswordTab}
+                onChange={(e) => setConfirmNewPasswordTab(e.target.value)}
+                required
+                style={{
+                  width: '100%',
+                  padding: '0.75rem 1rem',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '10px',
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }}
+              />
+            </div>
+
+            <button
+              type="submit"
+              style={{
+                width: '100%',
+                padding: '0.875rem',
+                backgroundColor: 'var(--color-primary)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '12px',
+                fontSize: '0.95rem',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                marginTop: '0.5rem',
+                boxShadow: '0 4px 10px rgba(44, 62, 45, 0.15)'
+              }}
+            >
+              Guardar Cambios 🔒
+            </button>
+          </form>
         </div>
       )}
 
