@@ -26,3 +26,5 @@ dist-ssr
 # Local databases
 data_orders.json
 data_menu.json
+
+.vercel

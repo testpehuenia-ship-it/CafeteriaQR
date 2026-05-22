@@ -1,11 +1,11 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useOrders } from '../../context/OrderContext';
-import { CheckCircle, Clock, ChefHat, CheckSquare, Receipt, AlertCircle } from 'lucide-react';
+import { CheckCircle, Clock, ChefHat, CheckSquare, Receipt, AlertCircle, Trash2, Edit } from 'lucide-react';
 
 const OrderStatus = () => {
   const navigate = useNavigate();
-  const { orders, activeOrderId, requestBill, clearActiveOrder } = useOrders();
+  const { orders, activeOrderId, requestBill, clearActiveOrder, deleteOrder, loadOrderToCart } = useOrders();
 
   // Buscar el pedido activo en el listado de órdenes
   const activeOrder = orders.find(order => order.id === activeOrderId);
@@ -38,6 +38,29 @@ const OrderStatus = () => {
   const handleFinishedNewOrder = () => {
     clearActiveOrder();
     navigate('/menu');
+  };
+
+  const handleCancelOrder = async () => {
+    if (window.confirm('¿Estás seguro de que deseas cancelar este pedido? Se eliminará definitivamente.')) {
+      try {
+        await deleteOrder(id);
+        navigate('/menu');
+      } catch (err) {
+        alert('Error al cancelar el pedido. Por favor intenta de nuevo.');
+      }
+    }
+  };
+
+  const handleModifyOrder = async () => {
+    if (window.confirm('¿Deseas modificar este pedido? Los productos volverán a tu carrito y se cancelará el pedido actual para que puedas hacer uno nuevo.')) {
+      try {
+        loadOrderToCart(items);
+        await deleteOrder(id);
+        navigate('/menu');
+      } catch (err) {
+        alert('Error al modificar el pedido. Por favor intenta de nuevo.');
+      }
+    }
   };
 
   // Si el pedido ya está finalizado (cajero registró el pago)
@@ -279,20 +302,85 @@ const OrderStatus = () => {
             </div>
           </div>
 
+          {status === 'para_despachar' && (
+            <div style={{ 
+              backgroundColor: '#fff5f5', 
+              border: '1px solid #fee2e2', 
+              borderRadius: '16px', 
+              padding: '1.25rem', 
+              marginBottom: '1.5rem',
+              textAlign: 'center'
+            }}>
+              <h4 style={{ color: '#991b1b', fontSize: '0.95rem', fontWeight: 'bold', marginBottom: '0.35rem' }}>¿Necesitas cambiar algo?</h4>
+              <p style={{ color: '#7f1d1d', fontSize: '0.8rem', marginBottom: '1rem', lineHeight: '1.4' }}>
+                Tu pedido aún no ha comenzado a prepararse. Puedes modificar los productos o cancelarlo por completo.
+              </p>
+              <div style={{ display: 'flex', gap: '0.75rem' }}>
+                <button
+                  onClick={handleModifyOrder}
+                  style={{
+                    flex: 1,
+                    backgroundColor: '#fff',
+                    border: '1px solid #fca5a5',
+                    color: '#b91c1c',
+                    borderRadius: '10px',
+                    padding: '0.6rem',
+                    fontSize: '0.85rem',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.25rem',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#fff5f5'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#fff'}
+                >
+                  <Edit size={14} /> Modificar
+                </button>
+                <button
+                  onClick={handleCancelOrder}
+                  style={{
+                    flex: 1,
+                    backgroundColor: '#b91c1c',
+                    border: 'none',
+                    color: 'white',
+                    borderRadius: '10px',
+                    padding: '0.6rem',
+                    fontSize: '0.85rem',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.25rem',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#991b1b'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#b91c1c'}
+                >
+                  <Trash2 size={14} /> Cancelar Pedido
+                </button>
+              </div>
+            </div>
+          )}
+
           <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             <button
               onClick={() => requestBill(id)}
+              disabled={status === 'para_despachar'}
               style={{
                 width: '100%',
-                backgroundColor: '#b45309', // Amber / Brown oscuro
-                color: 'white',
+                backgroundColor: status === 'para_despachar' ? '#d1d5db' : '#b45309', // Amber / Brown oscuro o gris
+                color: status === 'para_despachar' ? '#9ca3af' : 'white',
                 border: 'none',
                 borderRadius: '12px',
                 padding: '1rem',
                 fontSize: '1.1rem',
                 fontWeight: 'bold',
-                boxShadow: '0 4px 12px rgba(180, 83, 9, 0.25)',
-                cursor: 'pointer',
+                boxShadow: status === 'para_despachar' ? 'none' : '0 4px 12px rgba(180, 83, 9, 0.25)',
+                cursor: status === 'para_despachar' ? 'not-allowed' : 'pointer',
                 transition: 'transform 0.2s, background-color 0.2s',
                 display: 'flex',
                 alignItems: 'center',
@@ -300,19 +388,29 @@ const OrderStatus = () => {
                 gap: '0.5rem'
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = '#92400e';
-                e.currentTarget.style.transform = 'scale(1.02)';
+                if (status !== 'para_despachar') {
+                  e.currentTarget.style.backgroundColor = '#92400e';
+                  e.currentTarget.style.transform = 'scale(1.02)';
+                }
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = '#b45309';
-                e.currentTarget.style.transform = 'scale(1)';
+                if (status !== 'para_despachar') {
+                  e.currentTarget.style.backgroundColor = '#b45309';
+                  e.currentTarget.style.transform = 'scale(1)';
+                }
               }}
             >
               <Receipt size={20} /> Pedir la Cuenta
             </button>
-            <p style={{ fontSize: '0.8rem', color: '#6b7280' }}>
-              Al pedir la cuenta, generaremos tu ticket y avisaremos a caja.
-            </p>
+            {status === 'para_despachar' ? (
+              <p style={{ fontSize: '0.8rem', color: '#b91c1c', fontWeight: '600' }}>
+                No se puede solicitar la cuenta mientras el pedido esté pendiente de preparación.
+              </p>
+            ) : (
+              <p style={{ fontSize: '0.8rem', color: '#6b7280' }}>
+                Al pedir la cuenta, generaremos tu ticket y avisaremos a caja.
+              </p>
+            )}
           </div>
         </div>
       )}

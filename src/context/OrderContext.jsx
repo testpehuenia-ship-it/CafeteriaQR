@@ -255,6 +255,35 @@ export const OrderProvider = ({ children }) => {
     return newId;
   };
 
+  const deleteOrder = async (orderId) => {
+    setOrders(prev => prev.filter(order => order.id !== orderId));
+    if (activeOrderId === orderId) {
+      setActiveOrderId(null);
+    }
+    
+    if (isFirebaseConfigured && db) {
+      try {
+        await deleteDoc(doc(db, 'orders', orderId));
+      } catch (e) {
+        console.error('Error al eliminar pedido en Firestore:', e);
+        throw new Error('No se pudo eliminar el pedido en la base de datos.');
+      }
+    } else {
+      try {
+        await fetch(`/api/orders/${orderId}`, {
+          method: 'DELETE'
+        });
+      } catch (e) {
+        console.warn('Failed to delete order on API', e);
+      }
+    }
+  };
+
+  const loadOrderToCart = (items) => {
+    setCart(items);
+  };
+
+
   const updateOrderStatus = async (orderId, newStatus) => {
     setOrders(prev => prev.map(order => 
       order.id === orderId ? { ...order, status: newStatus } : order
@@ -450,6 +479,8 @@ export const OrderProvider = ({ children }) => {
       removeFromCart,
       clearCart,
       submitOrder,
+      deleteOrder,
+      loadOrderToCart,
       updateOrderStatus,
       requestBill,
       clearActiveOrder,

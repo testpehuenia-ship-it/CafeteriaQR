@@ -134,6 +134,17 @@ const apiPlugin = () => ({
           }
         }
 
+        // DELETE /api/orders/:id
+        if (pathname.startsWith('/api/orders/') && method === 'DELETE') {
+          const id = pathname.split('/').pop()
+          const orders = readData(ORDERS_FILE, [])
+          const updatedOrders = orders.filter(order => order.id !== id)
+          writeData(ORDERS_FILE, updatedOrders)
+          console.log(`\x1b[31m[API Delete]\x1b[0m Pedido #${id.slice(-4)} eliminado`)
+          return sendJSON(res, { success: true })
+        }
+
+
         // GET /api/menu
         if (pathname === '/api/menu' && method === 'GET') {
           const menu = readData(MENU_FILE, DEFAULT_MENU)

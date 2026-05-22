@@ -311,6 +311,7 @@ const Dashboard = () => {
   const { 
     orders, 
     updateOrderStatus, 
+    requestBill,
     menuItems, 
     addMenuItem, 
     updateMenuItem, 
@@ -1349,7 +1350,7 @@ const Dashboard = () => {
                         <span style={{ fontWeight: 'bold', color: 'var(--color-primary)', fontSize: '1.1rem' }}>${order.total}</span>
                         
                         <div style={{ display: 'flex', gap: '0.375rem' }}>
-                          {order.billRequested && (
+                          {order.billRequested ? (
                             <button
                               onClick={() => {
                                 if (window.confirm(`¿Registrar cobro del pedido de ${order.customerName} por $${order.total}?`)) {
@@ -1374,6 +1375,32 @@ const Dashboard = () => {
                               onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#22c55e'}
                             >
                               Cobrar 💵
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                if (window.confirm(`¿Solicitar cierre/cuenta para el pedido de ${order.customerName}?`)) {
+                                  requestBill(order.id);
+                                }
+                              }}
+                              style={{
+                                padding: '0.375rem 0.75rem',
+                                backgroundColor: '#d97706',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '8px',
+                                fontSize: '0.8rem',
+                                fontWeight: '600',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '3px'
+                              }}
+                              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#b45309'}
+                              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#d97706'}
+                            >
+                              Solicitar Cuenta 🧾
                             </button>
                           )}
                           

@@ -5,7 +5,8 @@ import { useOrders } from '../../context/OrderContext';
 const Checkout = () => {
   const navigate = useNavigate();
   const { cart, submitOrder, activeOrderId } = useOrders();
-  const [name, setName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Si ya hay un pedido activo en curso, redirigir directo a ver su estado
@@ -28,10 +29,11 @@ const Checkout = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (name.trim().length > 0 && !isSubmitting) {
+    const fullName = `${firstName.trim()} ${lastName.trim()}`;
+    if (firstName.trim() && lastName.trim() && !isSubmitting) {
       setIsSubmitting(true);
       try {
-        await submitOrder(name);
+        await submitOrder(fullName);
         navigate('/order-status');
       } catch (err) {
         console.error('Error submitting order:', err);
@@ -68,16 +70,33 @@ const Checkout = () => {
         <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.95rem', fontWeight: '600', color: '#4b5563' }}>
           ¿A qué nombre tomamos el pedido? *
         </label>
-        <input 
-          type="text" 
-          required
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Ej: María Gómez"
-          className="input"
-          style={{ marginBottom: '1.5rem' }}
-          autoFocus
-        />
+        <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem' }}>
+          <div style={{ flex: 1 }}>
+            <label style={{ display: 'block', fontSize: '0.8rem', color: '#6b7280', marginBottom: '0.25rem', fontWeight: '500' }}>Nombre</label>
+            <input 
+              type="text" 
+              required
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              placeholder="Ej: María"
+              className="input"
+              style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #d1d5db' }}
+              autoFocus
+            />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={{ display: 'block', fontSize: '0.8rem', color: '#6b7280', marginBottom: '0.25rem', fontWeight: '500' }}>Apellido</label>
+            <input 
+              type="text" 
+              required
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+              placeholder="Ej: Gómez"
+              className="input"
+              style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #d1d5db' }}
+            />
+          </div>
+        </div>
         <div style={{ display: 'flex', gap: '1rem' }}>
           <button 
             type="button" 
@@ -90,8 +109,8 @@ const Checkout = () => {
           <button 
             type="submit" 
             className="btn btn-primary"
-            style={{ flex: 1, padding: '0.75rem', borderRadius: '10px', fontWeight: 'bold', backgroundColor: 'var(--color-primary)', color: 'white', opacity: isSubmitting || !name.trim() ? 0.7 : 1 }}
-            disabled={isSubmitting || !name.trim()}
+            style={{ flex: 1, padding: '0.75rem', borderRadius: '10px', fontWeight: 'bold', backgroundColor: 'var(--color-primary)', color: 'white', opacity: isSubmitting || !firstName.trim() || !lastName.trim() ? 0.7 : 1 }}
+            disabled={isSubmitting || !firstName.trim() || !lastName.trim()}
           >
             {isSubmitting ? 'Enviando...' : 'Confirmar'}
           </button>
